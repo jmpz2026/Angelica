@@ -10,6 +10,13 @@ import org.embeddedt.embeddium.impl.render.shader.ShaderLoader;
  */
 public final class FragmentShaderGenerator {
 
+    /**
+     * The compatibility profile writes the fixed-function color to every active draw buffer. Matching that
+     * keeps mods that bind several color attachments (MRT bloom passes) defined; 4 is the GL ES 3.x minimum
+     * of GL_MAX_DRAW_BUFFERS and covers what mods use in practice.
+     */
+    static final int FRAG_COLOR_BROADCAST_OUTPUTS = 4;
+
     private FragmentShaderGenerator() {}
 
     public static String generate(FragmentKey key) {
@@ -27,7 +34,12 @@ public final class FragmentShaderGenerator {
             sb.append(ShaderLoader.getShaderSource("angelica:combined_glint.frag.glsl"));
             return sb.toString();
         }
-        sb.append("out vec4 fragColor;\n\n");
+        final int outputs = key.fragColorBroadcast() ? FRAG_COLOR_BROADCAST_OUTPUTS : 1;
+        sb.append("layout(location = 0) out vec4 fragColor;\n");
+        for (int i = 1; i < outputs; i++) {
+            sb.append("layout(location = ").append(i).append(") out vec4 fragColor").append(i).append(";\n");
+        }
+        sb.append('\n');
 
         sb.append("void main() {\n");
         emitLineStipple(sb, key);
@@ -37,6 +49,9 @@ public final class FragmentShaderGenerator {
         emitAlphaTest(sb, key);
         emitFog(sb, key);
         sb.append("  fragColor = color;\n");
+        for (int i = 1; i < outputs; i++) {
+            sb.append("  fragColor").append(i).append(" = color;\n");
+        }
         sb.append("}\n");
 
         return sb.toString();

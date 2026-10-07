@@ -11,6 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import net.minecraft.block.Block;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.shader.Framebuffer;
 import net.minecraft.client.gui.GuiMainMenu;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.GuiVideoSettings;
@@ -48,6 +49,7 @@ import com.gtnewhorizons.angelica.compat.mojang.CompatMathHelper;
 import com.gtnewhorizons.angelica.config.AngelicaConfig;
 import com.gtnewhorizons.angelica.rendering.TileEntityRenderBoundsRegistry;
 import com.gtnewhorizons.angelica.rendering.tesr.AngelicaTesrMeshCache;
+import com.gtnewhorizons.angelica.rendering.tesr.TesrBatchRenderer;
 import com.gtnewhorizons.angelica.config.CompatConfig;
 import com.gtnewhorizons.angelica.config.ConfigMigrator;
 import com.gtnewhorizons.angelica.config.SystemProperties;
@@ -60,6 +62,8 @@ import com.gtnewhorizons.angelica.debug.TPSGraph;
 import com.gtnewhorizons.angelica.dynamiclights.DynamicLights;
 import com.gtnewhorizons.angelica.dynamiclights.config.EntityLightConfig;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.ffp.FragmentKey;
+import net.coderbot.iris.rendertarget.IRenderTargetExt;
 import com.gtnewhorizons.angelica.glsm.backend.BackendStartGuard;
 import com.gtnewhorizons.angelica.glsm.backend.VSyncMode;
 import com.gtnewhorizons.angelica.glsm.profiling.Tracy;
@@ -152,7 +156,16 @@ public final class ClientProxy extends CommonProxy {
         if (AngelicaConfig.enableIris) {
             IrisGLSMBridge.installImmediateExtendedHandler();
             Iris.warmupShaderTransforms();
+            FragmentKey.fragColorBroadcastCondition = () -> TesrBatchRenderer.deferredPipeline() == null;
+            GLStateManager.legacyDepthBufferFallback = ClientProxy::mainFramebufferDepthTexture;
         }
+    }
+
+    /** The main framebuffer's depth texture while its vanilla depth renderbuffer does not exist, else -1. */
+    private static int mainFramebufferDepthTexture() {
+        final Framebuffer framebuffer = Minecraft.getMinecraft().getFramebuffer();
+        if (framebuffer == null || framebuffer.depthBuffer >= 0) return -1;
+        return ((IRenderTargetExt) framebuffer).iris$getDepthTextureId();
     }
 
     @Override

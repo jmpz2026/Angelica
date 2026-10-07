@@ -1,6 +1,7 @@
 package com.gtnewhorizons.angelica.glsm.ffp;
 
 import java.util.Arrays;
+import java.util.function.BooleanSupplier;
 
 import com.gtnewhorizons.angelica.glsm.GLContextState;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
@@ -68,6 +69,7 @@ public final class FragmentKey {
     private static final int GLOBAL_BITS = 14;
     private static final int BIT_COMBINED_GLINT = 61;
     private static final int BIT_GLINT_REPLACE_ALPHA = 62;
+    private static final int BIT_FRAG_COLOR_BROADCAST = 63;
     private static final int BIT_FOG_MODE          = 0;  // 2 bits
     private static final int BIT_ALPHA_TEST        = 2;  // 1 bit
     private static final int BIT_ALPHA_FUNC        = 3;  // 3 bits
@@ -94,6 +96,13 @@ public final class FragmentKey {
 
     static final int MAX_UNITS = 4;
 
+    /**
+     * Whether the emulated fixed pipeline writes its color to every draw buffer, as the compatibility
+     * profile does. Installed by the client: off while an Iris deferred pipeline owns the gbuffers, so
+     * unmanaged draws do not spill color into normal/specular targets.
+     */
+    public static volatile BooleanSupplier fragColorBroadcastCondition = () -> true;
+
     private final long[] packed;
     private final int hash;
 
@@ -115,6 +124,7 @@ public final class FragmentKey {
         long global = 0;
         if (CombinedGlint.isActive()) global |= 1L << BIT_COMBINED_GLINT;
         if (CombinedGlint.replacesAlpha()) global |= 1L << BIT_GLINT_REPLACE_ALPHA;
+        if (fragColorBroadcastCondition.getAsBoolean()) global |= 1L << BIT_FRAG_COLOR_BROADCAST;
 
         // Fog
         if (glCtx.fogMode.isEnabled()) {
@@ -262,6 +272,7 @@ public final class FragmentKey {
     public int nrEnabledUnits()       { return (int) ((packed[0] >> BIT_NR_ENABLED_UNITS) & 0x7); }
     public boolean overlayEnabled()   { return ((packed[0] >> BIT_OVERLAY_ENABLED) & 1) != 0; }
     public boolean overlayInstanced() { return ((packed[0] >> BIT_OVERLAY_INSTANCED) & 1) != 0; }
+    public boolean fragColorBroadcast() { return (packed[0] >>> BIT_FRAG_COLOR_BROADCAST) != 0; }
 
     private long unitBits(int i) {
         return (i == 0) ? (packed[0] >>> GLOBAL_BITS) : packed[i];

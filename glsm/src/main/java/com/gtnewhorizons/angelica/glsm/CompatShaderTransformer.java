@@ -173,6 +173,11 @@ public class CompatShaderTransformer {
         return result;
     }
 
+    /** Outputs that receive a broadcast gl_FragColor: the guaranteed GL_MAX_DRAW_BUFFERS (8 on GL 3.3, 4 on ES 3.x). */
+    static int fragColorBroadcastOutputs() {
+        return RenderSystem.isGLES() ? 4 : 8;
+    }
+
     private static int minGlslVersion() {
         return RENDER_BACKEND != null ? RENDER_BACKEND.getMinGLSLVersion() : 330;
     }
@@ -335,7 +340,8 @@ public class CompatShaderTransformer {
      * Transform fragment outputs for core profile.
      */
     private static void transformFragmentOutputs(Transformer transformer) {
-        if (transformer.containsCall("gl_FragColor")) {
+        final boolean fragColor = transformer.containsCall("gl_FragColor");
+        if (fragColor) {
             transformer.replaceExpression("gl_FragColor", "gl_FragData[0]");
         }
 
@@ -344,6 +350,15 @@ public class CompatShaderTransformer {
 
         for (Integer i : found) {
             transformer.injectVariable("layout (location = " + i + ") out vec4 angelica_FragData" + i + ";");
+        }
+
+        // Compatibility profile broadcasts gl_FragColor to every active draw buffer; a single
+        // location-0 output would leave the others undefined (e.g. MRT bloom passes).
+        if (fragColor && found.size() == 1 && found.contains(0)) {
+            for (int i = 1; i < fragColorBroadcastOutputs(); i++) {
+                transformer.injectVariable("layout (location = " + i + ") out vec4 angelica_FragData" + i + ";");
+                transformer.appendMain("angelica_FragData" + i + " = angelica_FragData0;");
+            }
         }
 
         // Core profile: GL_ALPHA_TEST is removed - inject runtime discard using GLSM-tracked alpha reference (uploaded by CompatUniformManager).

@@ -127,6 +127,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.IntSupplier;
 
 import static com.gtnewhorizons.angelica.glsm.Vendor.AMD;
 import static com.gtnewhorizons.angelica.glsm.Vendor.INTEL;
@@ -4611,6 +4612,9 @@ public class GLStateManager {
         if (ctx().rasterizerDiscard.isEnabled() || FeedbackManager.getRenderMode() != GL11.GL_RENDER) {
             return;
         }
+        // Deferred geometry queued before the clear must land before it, not on top of the cleared buffer
+        // (e.g. a per-entity stencil clear between two batched entities).
+        beforeUncapturedStateChange();
         if (firstClearPending && Thread.currentThread() == MainThread && getDrawFramebuffer() == 0) {
             firstClearPending = false;
             final long start = System.nanoTime();
@@ -7396,10 +7400,43 @@ public class GLStateManager {
         return RENDER_BACKEND.genRenderbuffers();
     }
     public static void glDeleteRenderbuffers(int renderbuffer) { RENDER_BACKEND.deleteRenderbuffers(renderbuffer); }
-    public static void glBindRenderbuffer(int target, int renderbuffer) { RENDER_BACKEND.bindRenderbuffer(target, renderbuffer); }
-    public static void glRenderbufferStorage(int target, int internalformat, int width, int height) { RENDER_BACKEND.renderbufferStorage(target, internalformat, width, height); }
+    /**
+     * Depth texture standing in for a vanilla {@code Framebuffer.depthBuffer} that was never created.
+     * Shaders replace the main framebuffer's depth renderbuffer with a texture and leave
+     * {@code depthBuffer = -1}; mods that share it with their own FBOs (bind it, re-allocate it as
+     * DEPTH24_STENCIL8, attach it) would otherwise issue invalid calls and get FBOs with no depth or stencil.
+     * Returns -1 when there is nothing to stand in.
+     */
+    public static volatile IntSupplier legacyDepthBufferFallback = () -> -1;
+
+    /** -1 while a mod has "bound" the missing depth renderbuffer, so the storage call that follows is dropped. */
+    private static int boundRenderbuffer;
+
+    public static void glBindRenderbuffer(int target, int renderbuffer) {
+        if (renderbuffer < 0) {
+            boundRenderbuffer = -1;
+            return;
+        }
+        boundRenderbuffer = renderbuffer;
+        RENDER_BACKEND.bindRenderbuffer(target, renderbuffer);
+    }
+
+    public static void glRenderbufferStorage(int target, int internalformat, int width, int height) {
+        if (boundRenderbuffer < 0) return;
+        RENDER_BACKEND.renderbufferStorage(target, internalformat, width, height);
+    }
     public static void glRenderbufferStorageMultisample(int target, int samples, int internalformat, int width, int height) { RENDER_BACKEND.renderbufferStorageMultisample(target, samples, internalformat, width, height); }
-    public static void glFramebufferRenderbuffer(int target, int attachment, int renderbuffertarget, int renderbuffer) { RENDER_BACKEND.framebufferRenderbuffer(target, attachment, renderbuffertarget, renderbuffer); }
+    public static void glFramebufferRenderbuffer(int target, int attachment, int renderbuffertarget, int renderbuffer) {
+        if (renderbuffer < 0) {
+            final int depthTexture = legacyDepthBufferFallback.getAsInt();
+            if (depthTexture > 0 && (attachment == GL30.GL_DEPTH_ATTACHMENT || attachment == GL30.GL_STENCIL_ATTACHMENT
+                || attachment == GL30.GL_DEPTH_STENCIL_ATTACHMENT)) {
+                RENDER_BACKEND.framebufferTexture2D(target, attachment, GL11.GL_TEXTURE_2D, depthTexture, 0);
+            }
+            return;
+        }
+        RENDER_BACKEND.framebufferRenderbuffer(target, attachment, renderbuffertarget, renderbuffer);
+    }
 
     public static void glGenQueries(IntBuffer ids) {
         requireContext("glGenQueries");

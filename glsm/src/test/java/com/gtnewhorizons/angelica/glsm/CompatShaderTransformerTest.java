@@ -96,6 +96,41 @@ class CompatShaderTransformerTest {
     }
 
     @Test
+    void testFragColorBroadcastsToAllDrawBuffers() {
+        String src = """
+            #version 120
+            void main() {
+                gl_FragColor = vec4(1.0);
+            }
+            """;
+
+        String result = CompatShaderTransformer.transform(src, true);
+        final String compact = compact(result);
+        for (int i = 1; i < CompatShaderTransformer.fragColorBroadcastOutputs(); i++) {
+            assertTrue(compact.contains("layout(location=" + i + ")outvec4angelica_FragData" + i + ";"),
+                "missing broadcast output " + i + ":\n" + result);
+            assertTrue(compact.contains("angelica_FragData" + i + "=angelica_FragData0;"),
+                "missing broadcast copy " + i + ":\n" + result);
+        }
+    }
+
+    @Test
+    void testExplicitFragDataIsNotBroadcast() {
+        String src = """
+            #version 120
+            varying vec2 uv;
+            void main() {
+                gl_FragData[0] = vec4(uv, 0.0, 1.0);
+                gl_FragData[1] = vec4(0.5);
+            }
+            """;
+
+        String result = CompatShaderTransformer.transform(src, true);
+        assertTrue(result.contains("angelica_FragData1"), result);
+        assertFalse(result.contains("angelica_FragData2"), result);
+    }
+
+    @Test
     void testVersionUpgradeTo330() {
         String src = """
             #version 110
