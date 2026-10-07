@@ -175,6 +175,15 @@ public abstract class MixinFontRenderer implements FontRendererAccessor, IFontPa
                 argb |= 0xff000000;
             }
 
+            // Vanilla text inherits the caller's blend state. With blending off, a translucent color such as the
+            // scoreboard's 0x20FFFFFF still comes out opaque wherever it passes the alpha test. The batcher always
+            // blends, so make the color opaque in that case to look the same.
+            if (!GLStateManager.getBlendMode().isEnabled() && (argb >>> 24) != 0xff
+                && (!GLStateManager.getAlphaTest().isEnabled()
+                    || (argb >>> 24) / 255.0f > GLStateManager.getAlphaState().getReference())) {
+                argb |= 0xff000000;
+            }
+
             this.red = (float)(argb >> 16 & 255) / 255.0F;
             this.blue = (float)(argb >> 8 & 255) / 255.0F;
             this.green = (float)(argb & 255) / 255.0F;
