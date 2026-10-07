@@ -381,6 +381,11 @@ public final class Lwjgl2GLRenderBackend extends RenderBackend {
 
     @Override
     public void multiDrawElementsBaseVertex(int mode, long pCount, int type, long pIndices, int drawcount, long pBaseVertex) {
+        // Reached only under LWJGL 3, where Celeritas' own call is redirected here; see Lwjgl3Direct.
+        if (Lwjgl3Direct.ACTIVE) {
+            Lwjgl3Direct.multiDrawElementsBaseVertex(mode, pCount, type, pIndices, drawcount, pBaseVertex);
+            return;
+        }
         throw new UnsupportedOperationException("GLRenderBackend.multiDrawElementsBaseVertex should not be called — LWJGL service handles this");
     }
 
@@ -1438,20 +1443,20 @@ public final class Lwjgl2GLRenderBackend extends RenderBackend {
     // directly through method handles, which the redirector does not rewrite.
     @Override
     public long fenceSync(int condition, int flags) {
-        if (Lwjgl3Sync.ACTIVE) return Lwjgl3Sync.fenceSync(condition, flags);
+        if (Lwjgl3Direct.ACTIVE) return Lwjgl3Direct.fenceSync(condition, flags);
         return LWJGL.glFenceSync(condition, flags);
     }
 
     @Override
     public int clientWaitSync(long sync, int flags, long timeout) {
-        if (Lwjgl3Sync.ACTIVE) return Lwjgl3Sync.clientWaitSync(sync, flags, timeout);
+        if (Lwjgl3Direct.ACTIVE) return Lwjgl3Direct.clientWaitSync(sync, flags, timeout);
         return LWJGL.glClientWaitSync(sync, flags, timeout);
     }
 
     @Override
     public void deleteSync(long sync) {
-        if (Lwjgl3Sync.ACTIVE) {
-            Lwjgl3Sync.deleteSync(sync);
+        if (Lwjgl3Direct.ACTIVE) {
+            Lwjgl3Direct.deleteSync(sync);
             return;
         }
         LWJGL.glDeleteSync(sync);
@@ -1506,10 +1511,10 @@ public final class Lwjgl2GLRenderBackend extends RenderBackend {
     @Override public int getQueryObjecti(int id, int pname) { return GL15.glGetQueryObjecti(id, pname); }
 
     @Override public void waitSync(long sync, int flags, long timeout) {
-        if (Lwjgl3Sync.ACTIVE) Lwjgl3Sync.waitSync(sync, flags, timeout); else LWJGL.glWaitSync(sync, flags, timeout);
+        if (Lwjgl3Direct.ACTIVE) Lwjgl3Direct.waitSync(sync, flags, timeout); else LWJGL.glWaitSync(sync, flags, timeout);
     }
     @Override public int getSynci(long sync, int pname, IntBuffer length) {
-        return Lwjgl3Sync.ACTIVE ? Lwjgl3Sync.getSynci(sync, pname, length) : LWJGL.glGetSynci(sync, pname, length);
+        return Lwjgl3Direct.ACTIVE ? Lwjgl3Direct.getSynci(sync, pname, length) : LWJGL.glGetSynci(sync, pname, length);
     }
     @Override public void queryCounter(int id, int target) {
         if (caps.OpenGL33) GL33.glQueryCounter(id, target); else ARBTimerQuery.glQueryCounter(id, target);
