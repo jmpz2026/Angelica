@@ -170,6 +170,9 @@ public class HUDCaching {
             if (Tracy.ENABLED) Tracy.beginZone(Z_CACHE_WRAP);
             final int outerDepth = GLStateManager.pushState(allState);
             try {
+                // The cache is composited by its alpha: a color mask left by an earlier pass (e.g. a bloom
+                // that writes RGB only) would keep the clear from resetting alpha and the HUD from writing it.
+                GLStateManager.glColorMask(true, true, true, true);
                 if (framebuffer.framebufferWidth != mc.displayWidth || framebuffer.framebufferHeight != mc.displayHeight) {
                     framebuffer.createBindFramebuffer(mc.displayWidth, mc.displayHeight);
                 } else {
