@@ -36,6 +36,11 @@ public final class LtwFrameProbe {
     private LtwFrameProbe() {}
 
     public static void onFrameEnd(int mainFbo, int width, int height, String screen) {
+        onFrameEnd(mainFbo, width, height, screen, null);
+    }
+
+    /** {@code screenState} describes the open screen's fields; only evaluated when a report is written. */
+    public static void onFrameEnd(int mainFbo, int width, int height, String screen, java.util.function.Supplier<String> screenState) {
         if (reports >= MAX_REPORTS || !RenderSystem.isLTW()) return;
         if (!screen.equals(lastScreen)) {
             GLStateManager.LOGGER.info("[LtwProbe] screen {} -> {}", lastScreen, screen);
@@ -48,11 +53,11 @@ public final class LtwFrameProbe {
             if (black) {
                 if (++blackSamples == BLACK_SAMPLES_TO_REPORT && !reportedBlack) {
                     reportedBlack = true;
-                    report("window black for ~" + (BLACK_SAMPLES_TO_REPORT * SAMPLE_EVERY) + " frames", mainFbo, width, height, screen);
+                    report("window black for ~" + (BLACK_SAMPLES_TO_REPORT * SAMPLE_EVERY) + " frames", mainFbo, width, height, screen, screenState);
                 }
             } else {
                 if (reportedBlack) {
-                    report("window back after ~" + (blackSamples * SAMPLE_EVERY) + " frames", mainFbo, width, height, screen);
+                    report("window back after ~" + (blackSamples * SAMPLE_EVERY) + " frames", mainFbo, width, height, screen, screenState);
                     reportedBlack = false;
                 }
                 blackSamples = 0;
@@ -69,6 +74,12 @@ public final class LtwFrameProbe {
         return (PIXEL.get(0) | PIXEL.get(1) | PIXEL.get(2)) == 0;
     }
 
+    private static String pixel(int x, int y) {
+        PIXEL.clear();
+        GL11.glReadPixels(x, y, 1, 1, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, PIXEL);
+        return String.format("#%02x%02x%02x%02x", PIXEL.get(0) & 0xFF, PIXEL.get(1) & 0xFF, PIXEL.get(2) & 0xFF, PIXEL.get(3) & 0xFF);
+    }
+
     private static int getInt(int pname) {
         return GL11.glGetInteger(pname);
     }
@@ -81,7 +92,7 @@ public final class LtwFrameProbe {
         return sb.append(']').toString();
     }
 
-    private static void report(String what, int mainFbo, int width, int height, String screen) {
+    private static void report(String what, int mainFbo, int width, int height, String screen, java.util.function.Supplier<String> screenState) {
         reports++;
         final StringBuilder sb = new StringBuilder();
         sb.append("[LtwProbe] ").append(what).append(" | screen=").append(screen).append(" | window ").append(width).append('x').append(height);
@@ -109,12 +120,21 @@ public final class LtwFrameProbe {
                 + Integer.toHexString(getInt(GL20.GL_DRAW_BUFFER1));
             final int attach0 = GL30.glGetFramebufferAttachmentParameteri(GL30.GL_DRAW_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0,
                 GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
-            final boolean mainBlack = isBlack(width / 2, height / 2);
+            final String mainPixels = pixel(width / 2, height / 2) + " " + pixel(width / 4, height / 4) + " " + pixel(width * 3 / 4, height * 3 / 4);
             GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, drawFb);
             GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, readFb);
             sb.append("\n  mainFb ").append(mainFbo).append(": status=0x").append(Integer.toHexString(status))
                 .append(" drawBuffers=").append(drawBuffers).append(" colorAttachment0=").append(attach0)
-                .append(" centerBlack=").append(mainBlack);
+                .append(" pixels(center,low-left,up-right)=").append(mainPixels);
+        }
+        if (screenState != null) {
+            String state;
+            try {
+                state = screenState.get();
+            } catch (Throwable t) {
+                state = "unavailable: " + t;
+            }
+            sb.append("\n  screen state: ").append(state);
         }
         GLStateManager.LOGGER.warn(sb.toString());
     }

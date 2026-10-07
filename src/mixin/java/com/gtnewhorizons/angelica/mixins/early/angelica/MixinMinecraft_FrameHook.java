@@ -7,6 +7,7 @@ import com.gtnewhorizons.angelica.rendering.GlintClock;
 import com.gtnewhorizons.angelica.rendering.culling.GpuCulling;
 import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -37,14 +38,33 @@ public class MixinMinecraft_FrameHook {
     private void angelica$onFrameEnd(CallbackInfo ci) {
         final Minecraft mc = (Minecraft) (Object) this;
         final Framebuffer main = mc.getFramebuffer();
+        final Object screen = mc.currentScreen;
         LtwFrameProbe.onFrameEnd(main != null ? main.framebufferObject : 0, mc.displayWidth, mc.displayHeight,
-            mc.currentScreen == null ? "none" : mc.currentScreen.getClass().getSimpleName());
+            screen == null ? "none" : screen.getClass().getSimpleName(),
+            () -> angelica$describeScreen(mc, screen));
         FrameHooks.frameEnd();
     }
 
     @Inject(method = "func_147120_f"/*resetSize*/, at = @At("RETURN"))
     private void angelica$onFrameBegin(CallbackInfo ci) {
         FrameHooks.frameBegin();
+    }
+
+    /** Primitive fields of the open screen's own class, for the LTW black-screen probe. */
+    @Unique
+    private static String angelica$describeScreen(Minecraft mc, Object screen) {
+        final StringBuilder sb = new StringBuilder("world=").append(mc.theWorld != null)
+            .append(" inGameHasFocus=").append(mc.inGameHasFocus).append(" skipRenderWorld=").append(mc.skipRenderWorld);
+        if (screen == null) return sb.toString();
+        for (java.lang.reflect.Field f : screen.getClass().getDeclaredFields()) {
+            if (!f.getType().isPrimitive()) continue;
+            try {
+                f.setAccessible(true);
+                sb.append(' ').append(f.getName()).append('=').append(f.get(java.lang.reflect.Modifier.isStatic(f.getModifiers()) ? null : screen));
+            } catch (Throwable ignored) {
+            }
+        }
+        return sb.toString();
     }
 
     @Inject(method = "shutdownMinecraftApplet", at = @At("HEAD"))
