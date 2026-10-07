@@ -32,6 +32,8 @@ public final class LtwFrameProbe {
     private static boolean reportedBlack;
     private static int reports;
     private static String lastScreen = "none";
+    private static final int MAX_SCREEN_LOGS = 15;
+    private static int screenLogs;
 
     private LtwFrameProbe() {}
 
@@ -46,7 +48,18 @@ public final class LtwFrameProbe {
             GLStateManager.LOGGER.info("[LtwProbe] screen {} -> {}", lastScreen, screen);
             lastScreen = screen;
         }
-        if (++frame % SAMPLE_EVERY != 0 || width <= 0 || height <= 0) return;
+        ++frame;
+        if (!"none".equals(screen) && screenState != null && frame % 600 == 0 && screenLogs < MAX_SCREEN_LOGS) {
+            screenLogs++;
+            String state;
+            try {
+                state = screenState.get();
+            } catch (Throwable t) {
+                state = "unavailable: " + t;
+            }
+            GLStateManager.LOGGER.info("[LtwProbe] screen {} still open: {}", screen, state);
+        }
+        if (frame % SAMPLE_EVERY != 0 || width <= 0 || height <= 0) return;
         try {
             final boolean black = isBlack(width / 2, height / 2) && isBlack(width / 4, height / 4)
                 && isBlack(width * 3 / 4, height * 3 / 4);
