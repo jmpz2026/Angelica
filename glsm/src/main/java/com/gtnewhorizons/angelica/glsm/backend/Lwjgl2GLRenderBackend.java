@@ -1431,19 +1431,28 @@ public final class Lwjgl2GLRenderBackend extends RenderBackend {
         return GL11.glGetError();
     }
 
-    // LWJGL2 uses GLSync objects, not longs. The LWJGL service in celeritas already handles this, so we delegate
+    // LWJGL2 uses GLSync objects, not longs. The LWJGL service in celeritas already handles this, so we delegate.
+    // Under LWJGL 3 (the Android launchers) the service's own GL32C calls are redirected back into GLSM like any mod
+    // code, so delegating would recurse until StackOverflowError; there the long-based GL32C functions are called
+    // directly through method handles, which the redirector does not rewrite.
     @Override
     public long fenceSync(int condition, int flags) {
+        if (Lwjgl3Sync.ACTIVE) return Lwjgl3Sync.fenceSync(condition, flags);
         return LWJGL.glFenceSync(condition, flags);
     }
 
     @Override
     public int clientWaitSync(long sync, int flags, long timeout) {
+        if (Lwjgl3Sync.ACTIVE) return Lwjgl3Sync.clientWaitSync(sync, flags, timeout);
         return LWJGL.glClientWaitSync(sync, flags, timeout);
     }
 
     @Override
     public void deleteSync(long sync) {
+        if (Lwjgl3Sync.ACTIVE) {
+            Lwjgl3Sync.deleteSync(sync);
+            return;
+        }
         LWJGL.glDeleteSync(sync);
     }
 
@@ -1495,8 +1504,12 @@ public final class Lwjgl2GLRenderBackend extends RenderBackend {
     @Override public void getQueryObjectui(int id, int pname, IntBuffer params) { GL15.glGetQueryObjectu(id, pname, params); }
     @Override public int getQueryObjecti(int id, int pname) { return GL15.glGetQueryObjecti(id, pname); }
 
-    @Override public void waitSync(long sync, int flags, long timeout) { LWJGL.glWaitSync(sync, flags, timeout); }
-    @Override public int getSynci(long sync, int pname, IntBuffer length) { return LWJGL.glGetSynci(sync, pname, length); }
+    @Override public void waitSync(long sync, int flags, long timeout) {
+        if (Lwjgl3Sync.ACTIVE) Lwjgl3Sync.waitSync(sync, flags, timeout); else LWJGL.glWaitSync(sync, flags, timeout);
+    }
+    @Override public int getSynci(long sync, int pname, IntBuffer length) {
+        return Lwjgl3Sync.ACTIVE ? Lwjgl3Sync.getSynci(sync, pname, length) : LWJGL.glGetSynci(sync, pname, length);
+    }
     @Override public void queryCounter(int id, int target) {
         if (caps.OpenGL33) GL33.glQueryCounter(id, target); else ARBTimerQuery.glQueryCounter(id, target);
     }
