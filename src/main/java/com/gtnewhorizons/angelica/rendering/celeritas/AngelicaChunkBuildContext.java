@@ -24,6 +24,7 @@ import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.world.IBlockAccess;
+import net.minecraft.world.World;
 import org.embeddedt.embeddium.api.util.ColorABGR;
 import org.embeddedt.embeddium.impl.model.light.LightPipeline;
 import org.embeddedt.embeddium.impl.model.light.data.QuadLightData;
@@ -95,7 +96,9 @@ public class AngelicaChunkBuildContext extends ChunkBuildContext {
         smoothLightPipeline.reset();
         flatLightPipeline.reset();
         lightPipelineReady = true;
-        cachedSkylightSubtracted = Minecraft.getMinecraft().theWorld.skylightSubtracted;
+        // Builds run on worker threads; theWorld goes null if the client leaves the world while they are queued.
+        final World world = blockAccess instanceof WorldSlice ? ((WorldSlice) blockAccess).getWorld() : Minecraft.getMinecraft().theWorld;
+        cachedSkylightSubtracted = world != null ? world.skylightSubtracted : 0;
     }
 
     public WorldSlice swapWorldSlice(WorldSlice replacement) {
