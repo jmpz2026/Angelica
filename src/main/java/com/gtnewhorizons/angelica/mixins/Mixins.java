@@ -48,6 +48,7 @@ public enum Mixins implements IMixins {
             , "angelica.MixinMinecraft"
             , "angelica.MixinMinecraft_FrameHook"
             , "angelica.MixinMinecraft_IconifyGuard"
+            , "angelica.MixinMinecraft_MonotonicClock"
             , "angelica.MixinMinecraftServer"
             , "angelica.MixinSimpleReloadableResourceManager"
             , "angelica.bugfixes.MixinItemRenderer_EdgeDepth"
