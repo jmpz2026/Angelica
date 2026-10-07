@@ -766,7 +766,9 @@ public final class Lwjgl2GLRenderBackend extends RenderBackend {
 
     @Override
     public String getActiveUniform(int program, int index, int maxLength, IntBuffer sizeType) {
-        return GL20.glGetActiveUniform(program, index, maxLength, sizeType);
+        final ActiveVariableScratch s = activeVariableScratch(maxLength);
+        GL20.glGetActiveUniform(program, index, s.length, s.size, s.type, s.name);
+        return s.result(sizeType);
     }
 
     @Override
@@ -1715,7 +1717,51 @@ public final class Lwjgl2GLRenderBackend extends RenderBackend {
 
     @Override
     public String getActiveAttrib(int program, int index, int maxLength, IntBuffer sizeType) {
-        return GL20.glGetActiveAttrib(program, index, maxLength, sizeType);
+        final ActiveVariableScratch s = activeVariableScratch(maxLength);
+        GL20.glGetActiveAttrib(program, index, s.length, s.size, s.type, s.name);
+        return s.result(sizeType);
+    }
+
+    /*
+     * The LWJGL 2 overloads that pack size and type into one buffer are not safe everywhere: the LWJGL 2 layer that
+     * some launchers put over LWJGL 3 (the Android ones) advances that buffer, and by the next call it has no room
+     * left and throws. These go through separate buffers and write size and type at absolute positions.
+     */
+    private ActiveVariableScratch activeVariableScratch;
+
+    private ActiveVariableScratch activeVariableScratch(int maxLength) {
+        if (activeVariableScratch == null || activeVariableScratch.name.capacity() < maxLength) {
+            activeVariableScratch = new ActiveVariableScratch(Math.max(maxLength, 1));
+        }
+        activeVariableScratch.clear();
+        return activeVariableScratch;
+    }
+
+    private static final class ActiveVariableScratch {
+        final IntBuffer length = BufferUtils.createIntBuffer(1);
+        final IntBuffer size = BufferUtils.createIntBuffer(1);
+        final IntBuffer type = BufferUtils.createIntBuffer(1);
+        final ByteBuffer name;
+
+        ActiveVariableScratch(int capacity) {
+            this.name = BufferUtils.createByteBuffer(capacity);
+        }
+
+        void clear() {
+            length.clear();
+            size.clear();
+            type.clear();
+            name.clear();
+        }
+
+        String result(IntBuffer sizeType) {
+            final int pos = sizeType.position();
+            sizeType.put(pos, size.get(0));
+            sizeType.put(pos + 1, type.get(0));
+            final byte[] bytes = new byte[Math.max(0, Math.min(length.get(0), name.capacity()))];
+            for (int i = 0; i < bytes.length; i++) bytes[i] = name.get(i);
+            return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+        }
     }
 
     @Override
