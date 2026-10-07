@@ -29,6 +29,7 @@ import org.embeddedt.embeddium.impl.gl.device.RenderDevice;
 import org.embeddedt.embeddium.impl.gl.shader.GlProgram;
 import org.embeddedt.embeddium.impl.gl.shader.GlShader;
 import org.embeddedt.embeddium.impl.gl.shader.ShaderConstants;
+import org.embeddedt.embeddium.impl.gl.shader.ShaderParser;
 import org.embeddedt.embeddium.impl.gl.shader.ShaderType;
 import org.embeddedt.embeddium.impl.gl.tessellation.GlPrimitiveType;
 import org.embeddedt.embeddium.impl.gl.tessellation.GlTessellation;
@@ -59,6 +60,7 @@ import org.lwjgl.opengl.GL20;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 class AngelicaChunkRenderer extends DefaultChunkRenderer {
     private static final int BLOCK_TEXTURE_UNIT = 0;
@@ -322,14 +324,41 @@ class AngelicaChunkRenderer extends DefaultChunkRenderer {
         packTerrainSamplerAnisotropy = -1;
     }
 
+    /**
+     * OpenLTW translates desktop GLSL to GLSL ES and writes out the location of every shader input and output. A location
+     * only set through glBindAttribLocation/glBindFragDataLocation comes out as -1, which the Mali compiler rejects, so
+     * terrain never renders. Under LTW the chunk shaders get the same locations written into the source.
+     */
+    private GlShader loadChunkShader(ShaderType type, String name, ShaderConstants constants, ChunkShaderOptions options) {
+        if (!RenderSystem.isLTW()) {
+            return ShaderLoader.loadShader(type, name, constants);
+        }
+        String source = ShaderLoader.downgradeIfNeeded(type,
+            ShaderParser.parseShader(ShaderLoader.getShaderSource(name), ShaderLoader::getShaderSource, constants));
+        if (type == ShaderType.VERTEX) {
+            int i = 0;
+            for (var attr : options.pass().vertexType().getVertexFormat().getAttributes()) {
+                source = pinLocation(source, attr.getName(), i++);
+            }
+        } else if (!this.enableLegacyGLPatches) {
+            source = pinLocation(source, "fragColor", ChunkShaderBindingPoints.FRAG_COLOR);
+        }
+        return new GlShader(type, name, source);
+    }
+
+    static String pinLocation(String source, String variable, int location) {
+        return source.replaceAll("(?m)^(\\s*)((?:in|out)\\s+\\w+\\s+" + Pattern.quote(variable) + "\\s*;)",
+            "$1layout(location = " + location + ") $2");
+    }
+
     @Override
     protected GlProgram<ChunkShaderInterface> createShader(String path, ChunkShaderOptions options) {
         final ShaderConstants constants = options.constants();
         final List<GlShader> loadedShaders = new ArrayList<>();
 
         try {
-            loadedShaders.add(ShaderLoader.loadShader(ShaderType.VERTEX, "sodium:" + path + ".vsh", constants));
-            loadedShaders.add(ShaderLoader.loadShader(ShaderType.FRAGMENT, "angelica:" + path + ".fsh", constants));
+            loadedShaders.add(loadChunkShader(ShaderType.VERTEX, "sodium:" + path + ".vsh", constants, options));
+            loadedShaders.add(loadChunkShader(ShaderType.FRAGMENT, "angelica:" + path + ".fsh", constants, options));
 
             final var builder = GlProgram.builder("sodium:chunk_shader");
             loadedShaders.forEach(builder::attachShader);
