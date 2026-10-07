@@ -1,6 +1,8 @@
 package com.gtnewhorizons.angelica.mixins.early.angelica;
 
 import com.gtnewhorizons.angelica.glsm.hooks.FrameHooks;
+import com.gtnewhorizons.angelica.glsm.hooks.LtwFrameProbe;
+import net.minecraft.client.shader.Framebuffer;
 import com.gtnewhorizons.angelica.rendering.GlintClock;
 import com.gtnewhorizons.angelica.rendering.culling.GpuCulling;
 import net.minecraft.client.Minecraft;
@@ -33,6 +35,10 @@ public class MixinMinecraft_FrameHook {
 
     @Inject(method = "func_147120_f"/*resetSize*/, at = @At("HEAD"))
     private void angelica$onFrameEnd(CallbackInfo ci) {
+        final Minecraft mc = (Minecraft) (Object) this;
+        final Framebuffer main = mc.getFramebuffer();
+        LtwFrameProbe.onFrameEnd(main != null ? main.framebufferObject : 0, mc.displayWidth, mc.displayHeight,
+            mc.currentScreen == null ? "none" : mc.currentScreen.getClass().getSimpleName());
         FrameHooks.frameEnd();
     }
 
