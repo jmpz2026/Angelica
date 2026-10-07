@@ -343,7 +343,36 @@ class AngelicaChunkRenderer extends DefaultChunkRenderer {
         } else if (!this.enableLegacyGLPatches) {
             source = pinLocation(source, "fragColor", ChunkShaderBindingPoints.FRAG_COLOR);
         }
+        dumpLtwTranslationOnFailure(type, name, source);
         return new GlShader(type, name, source);
+    }
+
+    private static final java.util.Set<String> LTW_DUMPED = new java.util.HashSet<>();
+
+    /**
+     * Under LTW the driver compiles the GLSL ES that LTW translated from ours, so the line numbers in a compile error
+     * point into a source only the driver has. When a chunk shader fails, log that translation once, numbered.
+     */
+    private static void dumpLtwTranslationOnFailure(ShaderType type, String name, String source) {
+        if (!LTW_DUMPED.add(name)) return;
+        final int shader = GLStateManager.glCreateShader(type.id);
+        try {
+            GLStateManager.glShaderSource(shader, source);
+            GLStateManager.glCompileShader(shader);
+            if (GLStateManager.glGetShaderi(shader, GL20.GL_COMPILE_STATUS) == GL11.GL_TRUE) return;
+            final String translated = GLStateManager.glGetShaderSource(shader, 1 << 17);
+            final StringBuilder sb = new StringBuilder();
+            final String[] lines = translated.split("\n", -1);
+            for (int i = 0; i < lines.length; i++) {
+                sb.append(String.format("%4d| %s%n", i + 1, lines[i]));
+            }
+            AngelicaMod.LOGGER.warn("LTW: chunk shader {} failed to compile. Log: {}\nSource as compiled by the driver:\n{}",
+                name, GLStateManager.glGetShaderInfoLog(shader, 8192), sb);
+        } catch (RuntimeException e) {
+            AngelicaMod.LOGGER.warn("LTW: could not dump the translated chunk shader {}", name, e);
+        } finally {
+            GLStateManager.glDeleteShader(shader);
+        }
     }
 
     static String pinLocation(String source, String variable, int location) {
