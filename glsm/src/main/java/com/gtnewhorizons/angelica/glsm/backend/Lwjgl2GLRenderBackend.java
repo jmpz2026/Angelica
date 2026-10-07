@@ -2,6 +2,7 @@ package com.gtnewhorizons.angelica.glsm.backend;
 
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.RenderSystem;
+import com.gtnewhorizons.angelica.glsm.LTWWorkaround;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.AMDDebugOutput;
 import org.lwjgl.opengl.AMDDebugOutputCallback;
@@ -691,7 +692,7 @@ public final class Lwjgl2GLRenderBackend extends RenderBackend {
 
     @Override
     public void shaderSource(int shader, CharSequence source) {
-        GL20.glShaderSource(shader, source);
+        GL20.glShaderSource(shader, RenderSystem.isLTW() ? LTWWorkaround.stripInvariantPosition(source) : source);
     }
 
     @Override
