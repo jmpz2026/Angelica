@@ -34,6 +34,8 @@ public abstract class MixinForgeHooksClient_CoreProfile {
 
     @Unique private static final Logger LOGGER = LogManager.getLogger("Angelica");
 
+    @Unique private static final boolean angelica$ANDROID = System.getProperty("os.version", "").contains("Android");
+
     @Shadow static int stencilBits;
 
     /**
@@ -73,6 +75,21 @@ public abstract class MixinForgeHooksClient_CoreProfile {
             setMinor = lookup.unreflectSetter(minorField);
         } catch (ReflectiveOperationException e) {
             throw new RuntimeException("Failed to obtain ContextAttribs version setters", e);
+        }
+
+        // Android launchers (LWJGL 2 layer over LWJGL 3): Display.destroy() there removes the window but leaves the
+        // display marked as created and keeps its handle, so the next Display.create() is a no-op and the game runs
+        // on a window GLFW no longer knows; the first mouse grab (joining a world) then fails with "No window pointer
+        // found". It only happened on the first launch, before a version was pinned. Create once, at 3.3, no probing.
+        if (angelica$ANDROID) {
+            final Exception e = angelica$tryCreate(attribs, format, setMajor, setMinor, 3, 3);
+            if (e == null) {
+                LOGGER.info("Created GL 3.3 core profile context (Android, no probing)");
+                return;
+            }
+            angelica$reportContextFailure(e);
+            if (e instanceof LWJGLException lwjgl) throw lwjgl;
+            throw new LWJGLException("Failed to create OpenGL 3.3 core profile context", e);
         }
 
         final int platformMaxMajor = 4;
